@@ -1,7 +1,7 @@
 # stable-diffusion-web-ui-discord-bot
 Stable Diffusion Web UIをdiscordから使えるようにするBOT
 
-##使い方
+## 使い方
 .envのファイルを作って
 
 DISCORD_BOT_TOKEN=token
