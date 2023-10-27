@@ -125,5 +125,5 @@ async def on_message(message):
             else:
                 await message.channel.send("画像を生成できませんでした.")
 
-TOKEN = os.environ.get("DISCORD_BOT_TOKEN2")  # 環境変数からトークンを取得
+TOKEN = os.environ.get("DISCORD_BOT_TOKEN")  # 環境変数からトークンを取得
 client.run(TOKEN)
