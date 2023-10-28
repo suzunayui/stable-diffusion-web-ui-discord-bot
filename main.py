@@ -189,17 +189,18 @@ async def on_message(message):
             if 'images' in r:
                 timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")  # タイムスタンプを生成
                 # ファイル名を生成
-                output_file_name = f'{output_directory_path}{message.channel.id}-{timestamp}.png'
+                output_file_directory = f'{output_directory_path}{timestamp}.png'
+                output_file_name = f'{timestamp}.png'
 
                 # ディレクトリが存在しない場合、途中のディレクトリを作成
-                os.makedirs(os.path.dirname(output_file_name), exist_ok=True)
+                os.makedirs(os.path.dirname(output_file_directory), exist_ok=True)
 
                 image = Image.open(io.BytesIO(
                     base64.b64decode(r['images'][0])))
-                image.save(output_file_name)  # 生成したファイル名で保存
+                image.save(output_file_directory)  # 生成したディレクトリ・ファイル名で保存
 
-                with open(output_file_name, 'rb') as image_file:
-                    image_data = discord.File(image_file)
+                with open(output_file_directory, 'rb') as image_file:
+                    image_data = discord.File(image_file, filename=output_file_name)
 
                 await message.channel.send(file=image_data)
             else:
