@@ -68,3 +68,5 @@ python main.py
 ```
 
 まで打つとコマンドの一覧とコマンドの説明が表示されるはずです。説明を読んで使用してください。
+
+<img width="422" alt="コマンドの画像" src="https://github.com/suzunayui/stable-diffusion-web-ui-discord-bot/assets/148876956/b1b4e6ed-fc3a-4b76-805a-73f58fe28c65">
