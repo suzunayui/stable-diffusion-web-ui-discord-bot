@@ -37,6 +37,22 @@ output_directory_pathは出力したいフォルダを設定。
 
 channel_ids_by_serverは左がguild_id、右がchannel_idです。discordの開発者モードを有効にしたらIDをコピーできるのでそれで取得します。
 
+Stable Diffusion Web UIのwebui-user.batを編集します。
+
+```
+set COMMANDLINE_ARGS=
+```
+
+の行を
+
+```
+set COMMANDLINE_ARGS=--no-half --api
+```
+
+に変えます。（環境によっては--no-halfは必要ない場合があります、--apiオプションはつけないとAPIが使用できないはずです）
+
+webui-user.batをダブルクリックして起動しておきます。
+
 ここまで設定したらコマンドで
 
 ```
