@@ -1,74 +1,121 @@
 import os
 import discord
-from discord.ext import commands
+import discord.app_commands
+import datetime
 import requests
 import io
 import base64
 from PIL import Image
-from dotenv import load_dotenv
-load_dotenv()
-from discord import app_commands
-from enum import Enum
-import datetime  # datetime モジュールをインポート
+from database_access import UserSettingsDatabase
 
-# サーバーごとの対応するチャンネルIDを指定
-channel_ids_by_server = {
-    1111111111111111111: [2222222222222222222] #1111111111111111111をguild idに、2222222222222222222をchannel idに変えてください。
-}
+from config import DISCORD_BOT_TOKEN, API_URL, model_directory_path, output_directory_path, channel_ids_by_server
 
 # すべてのintentsを有効にする
 intents = discord.Intents.all()
 client = discord.Client(intents=intents)
-tree = app_commands.CommandTree(client)
-
-sd_model_checkpoint = "default.safetensors"  # デフォルトのモデル名を設定
+tree = discord.app_commands.CommandTree(client)
 
 # セッションを作成
 session = requests.Session()
 
+# モデルファイルのリストを作成
+allowed_extensions = (".safetensors", ".ckpt")
+model_files = [file for file in os.listdir(
+    model_directory_path) if file.endswith(allowed_extensions)]
 
-# APIエンドポイント
-API_URL = 'http://127.0.0.1:7860/sdapi/v1/txt2img'
+# choicesリストを作成
+choices = [discord.app_commands.Choice(name=file, value=file) for file in model_files]
 
-directory_path = 'D:\\stable-diffusion-webui\\models\\Stable-diffusion' #ローカルのフォルダに変えてください。
-safetensors_files = [file for file in os.listdir(directory_path) if file.endswith('.safetensors')]
-
+# 起動時処理
 @client.event
 async def on_ready():
     print(f'ログインしました： {client.user.name}')
-    await tree.sync()#スラッシュコマンドを同期
 
-@tree.command(name="list",description="モデル名一覧表示。")
-async def list_command(interaction: discord.Interaction):
-    
-    if safetensors_files:
-        models_list = "\n".join(safetensors_files)
-        await interaction.response.send_message(f"使用可能なモデル:\n```\n{models_list}```")
+    # データベースを初期化
+    with UserSettingsDatabase("user_settings.db") as user_settings_db:
+        pass  # ここで何か他の初期化処理を行うこともできます
+
+    await tree.sync()
+
+# sd_list_models コマンド
+@tree.command(description="使用可能なモデル一覧を表示します。")
+async def sd_list_models(ctx):
+    if model_files:
+        models_list = "\n".join(model_files)
+        await ctx.response.send_message(f"使用可能なモデル:\n```\n{models_list}```")
     else:
-        await interaction.response.send_message("使用可能なモデルはありません。")
+        await ctx.response.send_message("使用可能なモデルはありません.")
 
-@tree.command(name="set",description="モデル名の設定。")
-@discord.app_commands.describe(
-    text="モデル名の設定。"
-)
-@discord.app_commands.rename(
-    text="set"
-)
+# sd_set_model コマンド
+@tree.command(description="使用するモデルを設定します。")
 @discord.app_commands.choices(
-    text=[discord.app_commands.Choice(name=file, value=file) for file in safetensors_files]
+    value=choices
 )
-async def set_command(interaction: discord.Interaction,text:str):
-    global sd_model_checkpoint
+async def sd_set_model(ctx, value: str):
     # モデルが存在しない場合のエラーハンドリング
-    model_path = f'D:\\stable-diffusion-webui\\models\\Stable-diffusion\\{text}'
+    model_path = os.path.join(model_directory_path, value)
     if not os.path.exists(model_path):
-        await interaction.response.send_message(f"モデル {text} が存在しません。確認してください。")
+        await ctx.response.send_message(f"モデル {value} が存在しません。確認してください.")
         return
 
-    # モデル名を受け取り、sd_model_checkpointを更新
-    sd_model_checkpoint = text
-    await interaction.response.send_message(f"使用するモデルを変更しました、モデル名: {text}")
+    key = "sd_model_checkpoint"
+    user_id = ctx.user.id  # ユーザーID
+    guild_id = ctx.guild.id  # サーバー（ギルド）ID
 
+    # データベース接続を with ステートメントで確立
+    with UserSettingsDatabase("user_settings.db") as user_settings_db:
+        user_settings_db.add_setting(user_id, guild_id, key, value)
+
+    await ctx.response.send_message(f"設定を変更しました、キー: {key}, 値: {value}")
+
+# sd_model コマンド
+@tree.command(description="現在設定しているモデルを確認します。")
+async def sd_model(ctx):
+    key = "sd_model_checkpoint"
+    user_id = ctx.user.id
+    guild_id = ctx.guild.id
+
+    # データベース接続を with ステートメントで確立
+    with UserSettingsDatabase("user_settings.db") as user_settings_db:
+        # データベースからユーザーのモデル設定を取得
+        model_setting = user_settings_db.get_setting(user_id, guild_id, key)
+
+    if model_setting is not None:
+        await ctx.response.send_message(f"現在のモデル設定: {model_setting}")
+    else:
+        await ctx.response.send_message("モデルが設定されていません。")
+
+# sd_set_negative_prompt コマンド
+@tree.command(description="ネガティブプロンプトを設定します。")
+async def sd_set_negative_prompt(ctx, value: str):
+    key = "negative_prompt"
+    user_id = ctx.user.id  # ユーザーID
+    guild_id = ctx.guild.id  # サーバー（ギルド）ID
+
+    # データベース接続を with ステートメントで確立
+    with UserSettingsDatabase("user_settings.db") as user_settings_db:
+        user_settings_db.add_setting(user_id, guild_id, key, value)
+
+    await ctx.response.send_message(f"設定を変更しました、キー: {key}, 値: {value}")
+
+# sd_negative_prompt コマンド
+@tree.command(description="現在設定しているネガティブプロンプトを確認します。")
+async def sd_negative_prompt(ctx):
+    key = "negative_prompt"  # キーを "negative_prompt" に変更
+    user_id = ctx.user.id
+    guild_id = ctx.guild.id
+
+    # データベース接続を with ステートメントで確立
+    with UserSettingsDatabase("user_settings.db") as user_settings_db:
+        # データベースからユーザーの negative_prompt 設定を取得
+        negative_prompt_setting = user_settings_db.get_setting(user_id, guild_id, key)
+
+    if negative_prompt_setting is not None:
+        await ctx.response.send_message(f"現在の negative_prompt 設定: {negative_prompt_setting}")
+    else:
+        await ctx.response.send_message("negative_prompt が設定されていません。")
+
+# メッセージが送られた時の処理
 @client.event
 async def on_message(message):
 
@@ -89,16 +136,43 @@ async def on_message(message):
 
             prompt = message.content
 
-            if prompt == "/list":
-                return
-            
-            if prompt.startswith("/set "):
+            if prompt.startswith("/"):
                 return
 
+            # 使う設定の読み込み
+            user_id = message.author.id
+            guild_id = message.guild.id
+
+            model = None
+
+            with UserSettingsDatabase("user_settings.db") as user_settings_db:
+                # データベースからユーザーのモデル設定を取得
+                model = user_settings_db.get_setting(user_id, guild_id, "sd_model_checkpoint")
+
+            if not model:
+                default_model = model_files[0]  # デフォルトのモデル
+                with UserSettingsDatabase("user_settings.db") as user_settings_db:
+                    user_settings_db.add_setting(user_id, guild_id, "sd_model_checkpoint", default_model)
+                model = default_model
+
+            negative_prompt = None
+            
+            with UserSettingsDatabase("user_settings.db") as user_settings_db:
+                # データベースからユーザーの negative_prompt 設定を取得
+                negative_prompt = user_settings_db.get_setting(user_id, guild_id, "negative_prompt")
+
+            if not negative_prompt:
+                default_negative_prompt = "(worst quality, low quality:1.4)"  # デフォルトのネガティブプロンプト
+                with UserSettingsDatabase("user_settings.db") as user_settings_db:
+                    user_settings_db.add_setting(user_id, guild_id, "negative_prompt", default_negative_prompt)
+                negative_prompt = default_negative_prompt
+
+            user_settings_db.close()
+
             payload = {
-                "sd_model_checkpoint": sd_model_checkpoint,
+                "sd_model_checkpoint": model,
                 "prompt": prompt,
-                "negative_prompt" : "(worst quality, low quality:1.4)",
+                "negative_prompt": negative_prompt,
                 "steps": 20,
                 "sampler_index": "DPM++ 2M Karras",
                 "width": 512,
@@ -114,8 +188,14 @@ async def on_message(message):
 
             if 'images' in r:
                 timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")  # タイムスタンプを生成
-                output_file_name = f'{message.channel.id}-{timestamp}.png'  # ファイル名を生成
-                image = Image.open(io.BytesIO(base64.b64decode(r['images'][0])))
+                # ファイル名を生成
+                output_file_name = f'{output_directory_path}{message.channel.id}-{timestamp}.png'
+
+                # ディレクトリが存在しない場合、途中のディレクトリを作成
+                os.makedirs(os.path.dirname(output_file_name), exist_ok=True)
+
+                image = Image.open(io.BytesIO(
+                    base64.b64decode(r['images'][0])))
                 image.save(output_file_name)  # 生成したファイル名で保存
 
                 with open(output_file_name, 'rb') as image_file:
@@ -125,5 +205,4 @@ async def on_message(message):
             else:
                 await message.channel.send("画像を生成できませんでした.")
 
-TOKEN = os.environ.get("DISCORD_BOT_TOKEN2")  # 環境変数からトークンを取得
-client.run(TOKEN)
+client.run(DISCORD_BOT_TOKEN)
