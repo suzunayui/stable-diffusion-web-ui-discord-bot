@@ -1,6 +1,7 @@
 import os
 import discord
 import discord.app_commands
+from discord.app_commands import Choice
 import datetime
 import requests
 import io
@@ -8,7 +9,7 @@ import base64
 from PIL import Image
 from database_access import UserSettingsDatabase
 
-from config import DISCORD_BOT_TOKEN, API_URL, model_directory_path, output_directory_path, channel_ids_by_server
+from config import DISCORD_BOT_TOKEN, API_URL, SD_MODELS_API_URL, OPTIONS_API_URL, output_directory_path, channel_ids_by_server
 
 # すべてのintentsを有効にする
 intents = discord.Intents.all()
@@ -18,13 +19,20 @@ tree = discord.app_commands.CommandTree(client)
 # セッションを作成
 session = requests.Session()
 
-# モデルファイルのリストを作成
-allowed_extensions = (".safetensors", ".ckpt")
-model_files = [file for file in os.listdir(
-    model_directory_path) if file.endswith(allowed_extensions)]
-
-# choicesリストを作成
-choices = [discord.app_commands.Choice(name=file, value=file) for file in model_files]
+# モデル一覧の取得
+sd_models = []
+choices = []
+try:
+    response = requests.get(SD_MODELS_API_URL)
+    if response.status_code == 200:
+        model_data = response.json()  # レスポンスをJSON形式にパース
+        sd_models = [i["title"] for i in model_data]
+        for sd_model in sd_models:
+            choices.append(Choice(name=sd_model, value=sd_model))
+    else:
+        print(f"APIリクエストが失敗しました。ステータスコード: {response.status_code}")
+except Exception as e:
+    print(f"APIリクエスト中にエラーが発生しました: {str(e)}")
 
 # 起動時処理
 @client.event
@@ -40,8 +48,8 @@ async def on_ready():
 # sd_list_models コマンド
 @tree.command(description="使用可能なモデル一覧を表示します。")
 async def sd_list_models(ctx):
-    if model_files:
-        models_list = "\n".join(model_files)
+    if sd_models:
+        models_list = "\n".join(sd_models)
         await ctx.response.send_message(f"使用可能なモデル:\n```\n{models_list}```")
     else:
         await ctx.response.send_message("使用可能なモデルはありません.")
@@ -51,13 +59,12 @@ async def sd_list_models(ctx):
 @discord.app_commands.choices(
     value=choices
 )
+#@discord.app_commands.choices(value=[
+#    discord.app_commands.Choice(name='jitq_v30.safetensors [a1874b3caa]', value='jitq_v30.safetensors [a1874b3caa]'),
+#    discord.app_commands.Choice(name='qteamixQ_omegaFp16.safetensors [39d6af08b2]', value='qteamixQ_omegaFp16.safetensors [39d6af08b2]'),
+#    discord.app_commands.Choice(name='yayoiMix_v25.safetensors [ca28aa4a44]', value='yayoiMix_v25.safetensors [ca28aa4a44]'),
+#])
 async def sd_set_model(ctx, value: str):
-    # モデルが存在しない場合のエラーハンドリング
-    model_path = os.path.join(model_directory_path, value)
-    if not os.path.exists(model_path):
-        await ctx.response.send_message(f"モデル {value} が存在しません。確認してください.")
-        return
-
     key = "sd_model_checkpoint"
     user_id = ctx.user.id  # ユーザーID
     guild_id = ctx.guild.id  # サーバー（ギルド）ID
@@ -150,10 +157,9 @@ async def on_message(message):
                 model = user_settings_db.get_setting(user_id, guild_id, "sd_model_checkpoint")
 
             if not model:
-                default_model = model_files[0]  # デフォルトのモデル
                 with UserSettingsDatabase("user_settings.db") as user_settings_db:
-                    user_settings_db.add_setting(user_id, guild_id, "sd_model_checkpoint", default_model)
-                model = default_model
+                    user_settings_db.add_setting(user_id, guild_id, "sd_model_checkpoint", sd_models[0])
+                model = sd_models[0]
 
             negative_prompt = None
             
@@ -169,8 +175,15 @@ async def on_message(message):
 
             user_settings_db.close()
 
-            payload = {
+            print(model)
+            print(negative_prompt)
+
+            option_payload = {
                 "sd_model_checkpoint": model,
+            }
+            requests.post(url=OPTIONS_API_URL, json=option_payload)
+
+            payload = {
                 "prompt": prompt,
                 "negative_prompt": negative_prompt,
                 "steps": 20,
