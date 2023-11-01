@@ -31,8 +31,6 @@ DISCORD_BOT_TOKENはDiscord Developer PortalでApplicationを作ってから取�
 
 API_URLはStable Diffusion Web UIの設定を変えていないならそのままでいいです。
 
-model_directory_pathはStable Diffusion Web UIのmodels\Stable-diffusionフォルダを指定。
-
 output_directory_pathは出力したいフォルダを設定。
 
 channel_ids_by_serverは左がguild_id、右がchannel_idです。discordの開発者モードを有効にしたらIDをコピーできるのでそれで取得します。
